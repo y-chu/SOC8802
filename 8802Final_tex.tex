@@ -1,0 +1,329 @@
+%%% set document as article
+\documentclass[11pt,letterpaper]{article}
+
+%%%%%%%%%%%% Load packages %%%%%%%%%%%%%%%
+
+%\usepackage{natbib}
+%\usepackage{hyperref,natbib}
+\usepackage{graphicx}
+\usepackage{amsmath,wrapfig,amssymb,multirow}
+\usepackage[margin=1in]{geometry}
+\usepackage{chngcntr} %%%continuous ordering of figures
+\counterwithout{figure}{section}
+
+\usepackage[parfill]{parskip}
+
+\usepackage{url}
+\usepackage{authblk}
+\renewcommand\Affilfont{\footnotesize}
+\newcommand{\mbf}{\mathbf}
+
+\usepackage{easymat}
+\usepackage{bigstrut}
+\usepackage{threeparttable} 
+\usepackage[format=hang,labelfont=bf]{caption}
+\usepackage{appendix}
+\usepackage{rotating}
+\usepackage{tensor}
+
+\DeclareMathOperator{\Tr}{Tr}
+
+\usepackage{lipsum}
+\usepackage{amssymb,amsmath}
+\usepackage{amsthm,amsmath} %both
+\usepackage{booktabs}
+
+\RequirePackage[numbers, sort]{natbib}
+\RequirePackage{hyperref}
+\usepackage[utf8]{inputenc} %unicode support
+\usepackage{lmodern}
+\usepackage{hyperref}
+
+%%%%%%%%%%%% Load packages end %%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%% Begin document %%%%%%%%%%%%%%%
+
+\begin{document}
+\pagenumbering{roman}
+
+%% title, author, affiliation
+
+\title{\vspace*{\fill}{\bf {\sc 8802 project: short demo for indirect estimation of child mortality}}
+\vspace{2cm}}
+
+\author[*]{Yue Chu}
+\affil[1]{Department of Sociology, Ohio State University}
+\affil[*]{Correspondance to \href{mailto:chu.282@osu.edu}{chu.282@osu.edu}}
+\date{Dec.01, 2019 \vspace*{\fill}}
+
+\maketitle
+\pagenumbering{arabic}
+
+
+%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%
+
+Estimation of under-five mortality rates (U5MR) is one of the essential health indicators monitoring and evaluating the population health status, as well as the impact of health policies and programs.~\cite{sdgsResolution2015} In low- and middle income countries (LMICs) lacking reliable cival registration vital statistics (CRVS) systems, births and deaths are not prospectively and routinely recorded and investigated. Population-based surveys, such as Demographic and Health Surveys, are the primary approach to retrospectively collect information on births histories and survival status of children among women at reproductive age (usually aged 15 to 49 years), in order to calculate probability of deaths for children.~\cite{Mathers:2010tq}
+
+In full births history surveys, information on birth dates and survival status for all children ever born alive would be collected. However in many surveys where resources are limited, such as censuses or Multiple Indicator Cluster surveys (MICS), only summary birth history surveys are conducted. In summary birth history, only the total number of children ever born alive and the total number of surviving children would be ask, without information on survival status of each child. 
+
+With summary birth history, U5MR estimates would be based on indirect estimation approach, initially developed by William Brass. \cite{Brass:1975vl} The core idea of Brass method is the relationship between the fraction dead among children born to mother of a particular age group, and the population-level child mortality rates. It requires some underlying assumptions on trends and age-patterns of mortality and fertility to fill the data gaps. 
+
+Over the years, demographers have proposed a few refinements to the original Brass method to better address or relax the underlying assumptions[24]-[30], and coming up with better uncertainty estimates.\cite{Rajaratnam:2010fd} For example, Rajaratnam et al. \cite{Rajaratnam:2010fd} developed methods using maternal age or time since first birth and utilizing data from ohter countries, to better capture trends in most recent time periods and generate uncertainty.Alkema 2014, Verhulst 2016,\cite{Verhulst:2017gu}  Wilson & Wakefield 2018  [24-30]
+
+- Feeney: localizing in time the estimated rates of mortality[26]
+- children ever born and children dead by years since marriage and time since first birth have been proposed [29],[30], but not widely implemented.
+
+
+In a recent unpublished work,\cite{Schmertmann:2019wm} Carl Schemertmann proposed a new Bayesian approach, exploiting the same regularitis as classic Brass methods but with relaxed, and better uncertainty measures that incorporate both sampling error and potnetial errors in demographic assumptions. Period fertility were estimated using empirical model. 4 archetype shapes of fertility patterns were constructed from empirical data from 2003 Census International Database, 
+Prior distribution for weights assigns similar probabilities to schedule shapes, following an distribution of Dirichlet(1,1,1,1). Period mortality were modeled using Wilmoth quadrative model base on $_0q_5$.
+
+The Singular Value Decomposition (SVD) approach has been shown to be a reliable approach to model and predict age-specific mortality and fertility schedules, with less requirements on and greater flexibility incoorporating covariates. \cite{Clark:2015tp}
+
+In this study, we are proposing a new method first using the 
+
+
+
+Overall, this study aimed to improve the use of low-cost summary birth history data to reliably measure changes in child mortality levels. Using available empirical datasets, we developed and validated new methods for analyzing survey information on children ever born and children who have died.
+
+\subsection*{Probablistic Indirect Estimation of U5MR}
+
+
+
+The proposed appraoch uses simple parametric models to describe fertility and mortality levels and patterns over the period 
+
+simple parametric models 
+
+* Cohort expected fraction dead among all children 
+
+%%%%%%%%%%%
+\section{Method}
+%%%%%%%%%%%
+
+\subsection*{DHS}
+
+We 
+
+\subsection*{Probabilities of death by month among children under-five}
+
+Age-specific mortality probability (ASMP)
+We constructed mortality schedule from full birth histories from DHS surveys.
+
+
+\subsection*{Probabilities of giving birth by month among women of reproductive age}
+
+Age-specific fertility probability (ASFP)
+
+\subsection*{Model }
+
+We used SVD-Comp package to fit the SVD component model fand fit  SVD to model
+
+\subsection*{Microsimulation of fertility schedule of a woman}
+
+The SVD 
+
+where U is a matrix of left singular vectors (LSVs);
+V is a matric of right singular vectors (RSVs); 
+S is the diagonal matric of singular values (SVs). 
+
+To improve the prediction of 1q0, we model the relationship between logit(1q0) and logit(5q0) speerately as 
+logit(1q0)zl = cz + \beta_z1 logit(5q0)zl+ \beta_z2 logit(5q0)^2zl + \epsilon_zl
+
+
+Overall speaking the SVD model represents the probability of deaths from empircal data well. The fluctuation mostly comes from the bumpiness in model input, as we discussed 
+%%%%%%%%%%%
+\section{Results}
+%%%%%%%%%%%
+
+\subsection*{Data and fits}
+We used rdhs package to identify and access all DHS datasets for birth records and women's survey publically available on DHS website **(citation)**
+
+A total of `r length(data_birth)` surveys have publically available birth records, `r length(data_birth_extract)` have all variables needed for mortality rates calculation.  
+A total of `r length(data_women)` surveys have publically available women's records, `r length(data_women_extract)` have all variables needed for fertility rates calculation.  
+
+
+# Prepare datasets 
+
+## Get available DHS datasets using rdhs
+```{r data prep, include=FALSE}
+#source('./Brass_SVD_MRFR.R')
+```
+
+## calculate age-sepcific child mortality rates using DHS.rates package  
+For births file - 8 variables are needed:  
+* v005 Women individual sample weight
+* v007 Year of interview
+* v008 Date of interview (CMC)
+* v021 Primary sampling unit
+* v022 Sample strata for sampling error
+* v025 Type of residence urban/rural
+* b3 Date of birth (CMC)
+* b7 Age at death
+
+Weighted childhood component death probabilities for 8 age segments 0, 1-2, 3-5,
+6-11, 12-23, 24-35, 36-47, and 48-59 months 
+  - DHS.rates::chmortp returns weighted and unweighted number of deaths and children-years exposure.
+
+Table 1: childhood component death probabilities for 8 age segments 0, 1-2, 3-5,
+6-11, 12-23, 24-35, 36-47, and 48-59 months (example)  
+```{r}
+asmp_table[,1:10]
+```
+
+## calculate age-sepcific fertility rates (ASFR)   
+Two packages would produce age-specific fertility rates using DHS inputs, _DHS.rates_ package and _demogsurv_ package. 
+* DHS.rates package could only have ASFR by 5-year age interval  
+* demogsurv package would allow single year ASFR estimates  
+
+#### DHS.rates estimates  
+Needed variables for all women's file - 27 variables: 
+* v005 Women individual sample weight
+* v007 Year of interview
+* v008 Date of interview (CMC)
+* v011 Date of birth (CMC)
+* v021 Primary sampling unit
+* v022 Sample strata for sampling error
+* v025 Type of residence urban/rural
+* b3_01 - b3_20 Date of birth (CMC) birth 1 to 20
+
+Needed variables for ever married women's file - 3 additional variables
+* awfactt All woman factor - total
+* awfactu All woman factor - urban/rural
+* awfactr All woman factor - regional
+
+Table 2.1: ASFR by 5-yr age group, DHS.rates (example)  
+```{r}
+asfr_table[,1:10]
+```
+
+#### demogsurv estimates  
+The package is available at https://rdrr.io/github/mrc-ide/demogsurv/
+
+Table 2.2: ASFR by single-yr age group, demogsurv (example)  
+```{r}
+asfr1[1:10,1:10]
+```
+
+# Use SVD to get age patterns of mortality and fertility  
+## Child survival schedule
+
+The first 4 component from SVD for age-specific mortality rates:  
+![Alt text](/Users/yc/Dropbox/OSU/Research_IPR/BrassMethod/figure/SVD_asmp_1-4.png)
+
+The output is directly probability of dying, with logit transformation. Thus we transform the svd outputs back to get age-specific qs.  
+```{r svd mort, results=FALSE}
+# child survival schedule - probability of dying
+qlogit.output<-as.data.frame(cbind(#c("0", "1-2", "3-5", "6-11", "12-23", "24-35", "36-47", "48-59"), 
+  asmp_table$agegroup,
+  round(mean(svd.mort$v[,1])*svd.mort$d[1]*svd.mort$u[,1] + 
+          mean(svd.mort$v[,2])*svd.mort$d[2]*svd.mort$u[,2] + 
+          mean(svd.mort$v[,3])*svd.mort$d[3]*svd.mort$u[,3] + 
+          mean(svd.mort$v[,4])*svd.mort$d[4]*svd.mort$u[,4], digit=4) ))
+colnames(qlogit.output)<-c("age","asmp")
+  typeof(qlogit.output$asmp) 
+  qlogit.output$asmp<-as.numeric(as.character(qlogit.output$asmp))
+
+#transform back to q
+  mort.prob<-exp(qlogit.output$asmp)/(1+exp(qlogit.output$asmp))
+```
+
+## Women fertility schedule
+ASFR = annual # birth to women of a specific age per 1000 women in that age group.  
+Occurance of birth during the year would follow Poisson distribution (?) ~$Poisson(\lambda t)$ where t=1 year. Porbability mass function $P(X=x)=\frac{e^{-\lambda t}(\lambda t)^x}{x!}$  
+Thus probability of having no child during the year $P(X=x)=e^{-ASFR}$  
+
+```{r svd fert, results=FALSE}
+# women fertility schedule
+fert1.output<-as.data.frame( cbind(c(15:49),
+          round(mean(svd.fert.1yr$v[,1])*svd.fert.1yr$d[1]*svd.fert.1yr$u[,1] + 
+          mean(svd.fert.1yr$v[,2])*svd.fert.1yr$d[2]*svd.fert.1yr$u[,2] + 
+          mean(svd.fert.1yr$v[,3])*svd.fert.1yr$d[3]*svd.fert.1yr$u[,3] + 
+          mean(svd.fert.1yr$v[,4])*svd.fert.1yr$d[4]*svd.fert.1yr$u[,4] +
+          mean(svd.fert.1yr$v[,5])*svd.fert.1yr$d[5]*svd.fert.1yr$u[,5] +
+          mean(svd.fert.1yr$v[,6])*svd.fert.1yr$d[6]*svd.fert.1yr$u[,6] ) ))
+colnames(fert1.output)<-c("age","asfr")
+
+  fert1.output$fert1.prob <- exp(-fert1.output$asfr/1000)*fert1.output$asfr/1000
+  #fert1.prob<- exp(-fert1.output$asfr/1000)*fert1.output$asfr/1000
+  fert1.prob<- 1-exp(-fert1.output$asfr/1000) #*fert1.output$asfr/1000
+  plot(fert1.prob)
+```
+
+# Microsimulation - very simple scenario  
+
+## Overview of microsimulation structure  
+
+
+# parameters
+```{r}
+  n.i<-1000 # number of individuals (mother), 1 for now
+  n.t<-length(c(15:49)) # number of cycles , assume all leave through reproductive period for now
+  status.mother<-c("NB","B","D") # possible status of women, NB=no birth, B=give birth, D=death
+      #Note: assume no death for now
+  status.child<-c("L","D") # possible status of child, L=alive, D=dead
+  m.mother<-matrix(nrow=n.i, ncol=n.t+1,
+                   dimnames=list(paste("mother",1:n.i,sep=""),
+                            paste("age",0:n.t,sep=""))) # empty matrices to store data
+  m.child<-matrix(nrow=n.i, ncol=n.t+1,
+                  dimnames=list(paste("child",1:n.i,sep=""),
+                                paste("age",0:n.t,sep=""))) # empty list to store data
+  m.p.fert<-list() #matrix of status transition probabilities
+  for (i in 1:n.t) {
+    m.p.fert[[i]]<-matrix(nrow=3, ncol=3, c((1-fert1.prob[i]),(1-fert1.prob[i]),0,(fert1.prob[i]),(fert1.prob[i]),0,0,0,1),
+                          dimnames=list(c("current-NB","current-B","current-D"),
+                                        c("next-NB","next-B","next-D")))
+  }
+```
+
+
+
+
+Figure \ref{fig:asmp1} is a demo figure!  \lipsum[2]
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=5in]{SVD_asmp_1-4.png}
+\caption{This is an example parabola.}
+\label{fig:asmp1}
+\end{center}
+\end{figure}
+
+Figure \ref{fig:asfr2}, below, is the same figure repeated, but smaller and now numbered `2'. \lipsum[2]
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=2in]{SVD_asfr_5yr_1-4.png}
+\caption{This is a smaller example parabola.}
+\label{fig:asfr2}
+\end{center}
+\end{figure}
+
+Table \ref{tab:table1} is an example table that uses `\textbackslash input\{...\}' to source the table text. \lipsum[0.5]
+
+\input{table.txt}
+
+Table \ref{tab:table2} is the same example table created by copying and pasting the text from the `table.txt' file directly into this document, and setting the label to `tab:table2'.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrr}
+  \hline
+ & Col 1 & Col 2 & Col 3 \\ 
+  \hline
+Row 1 & 1.0 & 4.0 & 7.0 \\ 
+  Row 2 & 2.0 & 5.0 & 8.0 \\ 
+  Row 3 & 3.0 & 6.0 & 9.0 \\ 
+   \hline
+\end{tabular}
+\caption{Example Table} 
+\label{tab:table2}
+\end{table}
+
+
+% if your bibliography is in bibtex format, use those commands:
+\bibliographystyle{vancouver-authoryear} % Style BST file (bmc-mathphys, vancouver, spbasic).
+\bibliography{8802Final_bib}    
+
+\end{document}  
