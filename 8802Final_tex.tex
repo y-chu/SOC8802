@@ -1,0 +1,233 @@
+%%% set document as article
+\documentclass[11pt,letterpaper]{article}
+
+%%%%%%%%%%%% Load packages %%%%%%%%%%%%%%%
+
+%\usepackage{natbib}
+%\usepackage{hyperref,natbib}
+\usepackage{graphicx}
+\usepackage{grffile} %changes the algorithm to check for known extensions
+\usepackage{amsmath,wrapfig,amssymb,multirow}
+\usepackage[margin=1in]{geometry}
+\usepackage{chngcntr} %%%continuous ordering of figures
+\counterwithout{figure}{section}
+
+\usepackage[parfill]{parskip}
+
+\usepackage{url}
+\usepackage{authblk}
+\renewcommand\Affilfont{\footnotesize}
+\newcommand{\mbf}{\mathbf}
+
+\usepackage{easymat}
+\usepackage{bigstrut}
+\usepackage{threeparttable} 
+\usepackage[format=hang,labelfont=bf]{caption}
+\usepackage{appendix}
+\usepackage{rotating}
+\usepackage{tensor}
+
+\DeclareMathOperator{\Tr}{Tr}
+
+\usepackage{lipsum}
+\usepackage{amssymb,amsmath}
+\usepackage{amsthm,amsmath} %both
+\usepackage{booktabs}
+
+\RequirePackage[numbers, sort]{natbib}
+\RequirePackage{hyperref}
+\usepackage[utf8]{inputenc} %unicode support
+\usepackage{lmodern}
+\usepackage{hyperref}
+
+%%%%%%%%%%%% Load packages end %%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%% Begin document %%%%%%%%%%%%%%%
+
+\begin{document}
+\pagenumbering{roman}
+
+%% title, author, affiliation
+
+\title{\vspace*{\fill}{\bf {\sc 8802 project: short demo for indirect estimation of child mortality}}
+\vspace{2cm}}
+
+\author[*]{Yue Chu}
+\affil[1]{Department of Sociology, Ohio State University}
+\affil[*]{Correspondance to \href{mailto:chu.282@osu.edu}{chu.282@osu.edu}}
+\date{Dec.01, 2019 \vspace*{\fill}}
+
+\maketitle
+\pagenumbering{arabic}
+
+
+%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%
+
+Estimation of under-five mortality rates (U5MR) is one of the essential health indicators monitoring and evaluating the population health status, as well as the impact of health policies and programs.~\cite{sdgsResolution2015} In low- and middle income countries (LMICs) lacking reliable cival registration vital statistics (CRVS) systems, births and deaths are not prospectively and routinely recorded and investigated. Population-based surveys, such as Demographic and Health Surveys, are the primary approach to retrospectively collect information on births histories and survival status of children among women at reproductive age (usually aged 15 to 49 years), in order to calculate probability of deaths for children.~\cite{Mathers:2010tq}
+
+In full births history surveys, information on birth dates and survival status for all children ever born alive would be collected. However in many surveys where resources are limited, such as censuses or Multiple Indicator Cluster surveys (MICS), only summary birth history surveys are conducted. In summary birth history, only the total number of children ever born alive and the total number of surviving children would be ask, without information on survival status of each child. 
+
+With summary birth history, U5MR estimates would be based on indirect estimation approach, initially developed by William Brass. \cite{Brass:1975vl} The core idea of Brass method is the relationship between the fraction dead among children born to mother of a particular age group, and the population-level child mortality rates. It requires some underlying assumptions on trends and age-patterns of mortality and fertility to fill the data gaps. 
+
+Over the years, demographers have proposed a few refinements to the original Brass method to better address or relax the underlying assumptions[24]-[30], and coming up with better uncertainty estimates.\cite{Rajaratnam:2010fd} For example, Rajaratnam et al. \cite{Rajaratnam:2010fd} developed methods using maternal age or time since first birth and utilizing data from ohter countries, to better capture trends in most recent time periods and generate uncertainty.
+
+In a recent unpublished work,Carl Schemertmann\cite{Schmertmann:2019wm} proposed a new Bayesian approach, exploiting the same regularitis as classic Brass methods but with relaxed requirements on demographic stability in age-spepcific rates. It derives better uncertainty measures that incorporates both sampling error and potential errors in demographic assumptions, and allowing for changing fertility rates over time. In his approach, period fertility were estimated as a weighted sum of 4 archetype shapes of fertility patterns, constructed from empirical data from 2003 Census International Database. Prior distribution for weights assigned probabilities to schedule shapes following an distribution of Dirichlet(1,1,1,1). Period mortality were modeled using Wilmoth's log-quadratic model, a flexible two dimensional mortality model base on $_0q_5$.\cite{wilmoth2012flexible} Normal priors were used for fertility and mortality changes. Posterior distribution for U5MR were estimated using data from Demographic and Health Surveys, and modeled results were validated against direct estimations and conventional Brass method. Huge variation in model performance were seen across countries. For countries like Niger, the model was not catpuring the U5MR trend well.    
+
+In this study, we are proposing a new approach, using the Singular Value Decomposition (SVD) models to estimate age schedules for mortality and fertility, which could then be used as priors in Bayesian model for indirect estimation of child mortality. SVD has been shown to be a reliable approach to model and predict age-specific mortality and fertility schedules, with less requirements on inputs and greater flexibility incoorporating covariates. \cite{Clark:2015tp} And Bayesian approach is known for its flexibility with prior assumptions and uncertainty estiamtes. Combining the strength of both Bayesian and SVD models, we aimed to develop a simple model to improve the model performance and uncertainty estimation of indirect estimates of U5MR based on summary birth history data. 
+
+
+%%%%%%%%%%%
+\section{Method}
+%%%%%%%%%%%
+\subsection*{Overview}
+We first constructed schedule of age-specific probability of deaths (ASDP) by month for children under-five from full birth histories from DHS surveys. We also constructed schedule of age-specific probability of births (ASFP) by months for women aged 15 to 49 years from women's individual records from DHS. 
+
+We then used the SVD component model to fit the survival schedule for probability of deaths among children under-five, and the fertility schedule for probability of giving births among women aged 15-49 years.  
+
+With the two schedules, we microsimulated a woman's life trajectory of giving birth throughout the reproductive ages, and for each child born to the women, the life trajectory of survival through age five. Based on the results of the simulation, we calculated the distribution of total number of children ever born as well as total number of children survived. We then could develop a predictive model of child mortality as a function of total number of children ever born and total number of children survived, assuming that the woman live through the ASFP schedule for fertility during her reproductive years, and her children follows the ASDP schedule for survival.  
+
+
+\subsection*{Data source}
+Among all DHS surveys conducted after year 2000, a total of 177 surveys had publically available full birth histories data as well as women's records. For the ease of code-runnning for this demo project, results presented here were based on a subset of available DHS surveys, including 10 births records and 10 women datasets. Data were accessed at \href{https://dhsprogram.com/data/available-datasets.cfm}{DHS program website}. (Table 1)  
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrr}
+  \hline
+ Country Name & Survey Year \\ 
+  \hline
+Afghanistan & 2015 \\
+Albania & 2008 \\
+Albania & 2017 \\
+Angola & 2015 \\
+Armenia & 2000 \\
+Armenia & 2005 \\
+Armenia & 2010 \\
+Armenia & 2016 \\
+Azerbaijan & 2006 \\ 
+   \hline
+\end{tabular}
+\caption{List of survyes used in the demo analysis} 
+\label{tab:table1}
+\end{table}
+
+\subsection*{Probabilities of deaths and births}
+
+Age-specific probability of deaths for children under-five were calculated by children's month of age, for a total of 60 single-month age segments. 
+
+\textit{Age heaping and adjustment of age at death}  
+
+Since age at deaths were reported by month only for children under 24-months of age.\ref{fig:asdp1} For children aged 24 and above, age at deaths were reported by unit of years instead. In order to calculate probability of deaths by month up till 59 months, all deaths with age at death reported as multiples of 12 months for 24 months and above were randomly redistributed to subsequent months within the year, assuming uniform distribution of death through out the year.  
+
+Age heaping also existed in DHS birth histories.\ref{fig:asdp1} People tended to round the age at death to 6, 12 and 18 months, resulting in significantly more deaths in these months comparing to the neighboring months. Therefore we redistributed deaths occurred at 6, 12 and 18 months to neighboring months ($\pm$ 2 months) with symmetrically graduated probabilities P(0.1, 0.2, 0.4, 0.2, 0.1).  
+
+The calculation of component probability of births then followed the classifcal DHS approach, only with higher resolution of age groups. The methods were described in details in DHS methodology reports.\cite{croft2018guide}
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=2.5in]{RawAAD_AF2015DHS.png}
+\includegraphics[width=2.5in]{RawAAD_AO2015DHS.png}
+\includegraphics[width=2.5in]{RawAAD_AM2000DHS.png}
+\includegraphics[width=2.5in]{RawAAD_BD2000DHS.png}
+\caption{Density distribution of age at death among children under-five}
+\label{fig:asdp1}
+\end{center}
+\end{figure}
+
+Similarly, age-specific probability of giving birth for women of reproductive age (aged 15 to 49 years) were also calcualted by women's month of age, for a total of 419 single-month age segments. The calculation of component probability of births also followed the classifcal DHS approach, with higher resolution of age groups.\cite{croft2018guide} 
+
+
+\subsection*{SVD modeled age schedules for ASDP and ASFP}
+
+We used Singular Value Decomposition (SVD) approach to construct general, parsimonious component models of age schedules for age-specific mortality and fertility rates. The method was described in details in Clark, 2015 publication. \cite{Clark:2015tp}  
+Briefly speaking, the SVD approach first factorizes a matrix of demographic estimates (denoted as X) into three matrices - namely a matrix of ‘left singular vectors’ (LSVs) arranged in columns (denoted as U), a matrix of ‘right singular vectors’ (RSVs) arranged in columns (denoted as V), and a diagonal matrix of ‘singular values’ (SVs) (denoted as S) (equation demostrated as below). Then the matrix of demographic age schedules could be reconstructed with weighted-sum of much fewer components from the component model, yet still yielding a reasonably realiable estimation.  
+
+$$
+{X} = {U S V}^{-1}
+$$
+
+The ASDP and ASFP matrices constructed above from sample DHS surveys were used as the input data sources to train the models. Four of the new dimensions identified by each SVD were retained.  
+
+\subsection*{Microsimulation}
+We used microsimulation to estimate the distribution of total number of children ever born and total number of children survived.  
+
+For a hypothetical woman, based on the SVD-modeled ASFP schedule for fertility during her reproductive years, the woman was simulated through the model month-by-month while keeping track of her status transition trajectories in each time segment - whether giving birth, not giving birth or death. And if the woman give birth to a child, the survival trajectory of the child will also be simulated assuming that s/he lived through the ASDP schedule for survival.  
+
+By aggregating all the transition values over the model's cycles from the simulation, we will be able to get the simulated distribution of total number of births among women of reproductive age, as well as the total number of children surviving to age 5, given the SVD-modeled ASFP and ASDP schedules.  
+
+\subsection*{Prediction and validation}
+We then could develop a predictive model of child mortality as a function of total number of children ever born and total number of children survived. To assess the model performace, we randomly selected 80\% of data for model fitting and used the remaining 20\% for out-of-sample predictions. Root mean squared error were used to evalute accuracy of predictions.  
+Then we tested the model with empirical population data, and compared modeled estimates to mortality estimates coming from direct estimates and classical Brass method.    
+
+%%%%%%%%%%%
+\section{Preliminary results}
+%%%%%%%%%%%
+
+\subsection*{SVD modeled schedules for ASDP and ASFP}
+
+Figure \ref{fig:svdmort1} compares the SVD modeled age schedule for probability of deaths by month among children under-five to the empirical probability of deaths from DHS surveys used as model input. And Figure \ref{fig:svdmort2} shows the schedules for the first 4 components in the SVD models, $s_iu_i$, which are the LSVs from the SVD of DHS probability of deaths schedules scaled by their corresponding singular values.  
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=5in]{{svd.mort1_unsmoothed_wraw}.png}
+\caption{SVD for log-transformed age-specific probability of death, modeled vs empirical}
+\label{fig:svdmort1}
+\end{center}
+\end{figure}
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=5in]{{svd.mort1_su1-4}.png}
+\caption{SVD components for log-transformed age-specific probability of death}
+\label{fig:svdmort2}
+\end{center}
+\end{figure}
+
+Similar to the figures above, Figure \ref{fig:svdfert1} compares the SVD modeled age schedule for probability of giving births by month among women of reproductive age to the empirical probability of births from DHS surveys used as model input. And Figure \ref{fig:svdfert2} shows the schedules for the first 4 components in the SVD models, $s_iu_i$, which are the LSVs from the SVD of DHS probability of births schedules scaled by their corresponding singular values.  
+
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=5in]{{svd.fert1_unsmoothed_wraw}.png}
+\caption{SVD for log-transformed age-specific probability of giving birth, modeled vs empirical}
+\label{fig:svdfert1}
+\end{center}
+\end{figure}
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=5in]{{svd.fert1_su1-4}.png}
+\caption{SVD components for log-transformed age-specific probability of giving birth}
+\label{fig:svdfert2}
+\end{center}
+\end{figure}
+
+In general, the SVD models captured the shape of monthly ASDP and ASFP well. However, we also noticed that the modeled trends were very bumpy for both outcomes. Even after redistribution of deaths and adjustment for age heaping, the log-scaled probability of deaths had large fluctuation on monthly basis at individual survey level. Increasing the number of input survey data points would help smoothing the trend to some extent. 
+
+
+\subsection*{Upcoming results and next steps}
+
+\begin{itemize}
+\item Results for microsimulation (Upcoming)
+  \begin{itemize}
+    \item Account for maternal mortality: currently assumed no maternal daeths in this population.  
+    \item Adjust probability of births during pregnancy. 
+    \item Account for association between maternal and child mortality: currently assumed independence between mother and child, but evidence suggests that among high HIV-prevalence population, maternal mortality is significantly associated with child mortality and could impact the validity of indirect estimation of child mortality. \cite{quattrochi2019measuring}
+    \item Incoorporating trend in fertility and mortality schedules over time.  
+  \end{itemize}
+\item Test SVD with smoothed ASDP (/and ASFP) inputs
+\item Fit SVD under Bayesian framework
+\item Uncertainty estimation
+\item Validation of modeled results
+\end{itemize}
+
+
+
+% if your bibliography is in bibtex format, use those commands:
+\bibliographystyle{vancouver-authoryear} % Style BST file (bmc-mathphys, vancouver, spbasic).
+\bibliography{8802Final_bib}    
+
+\end{document}  
