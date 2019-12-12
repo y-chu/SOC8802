@@ -1,0 +1,749 @@
+---
+title: |
+  | 8802 Final R Markdown
+  | Short demo for indirect estimation of child mortality
+author: "Yue Chu | chu.282@osu.edu"
+output: pdf_document
+fontsize: 11pt
+geometry: margin = 1in
+header-includes:
+#- \usepackage{fancyhdr}
+- \usepackage{setspace}\onehalfspacing
+bibliography: 8802Final_bib.bib
+---
+
+Document version: last modified on `r date() `
+
+
+
+# Overview 
+
+This document shows the analysis conducted to generate the results, figures and tables in the "8802Final_tex.tex" document.  
+
+The data analysis follows the following steps:  
+1. Extract and prepare the data sets from Demographic and Health Surveys (DHS)  
+  * Birth records (a subsample of 10 surveys after 2000)  
+  * Women's records (a subsample of 10 surveys after 2000)  
+2. Calculate component probability of births an deaths  
+  * Calculate age-specific probability of deaths (ASDP) for children under-five by months, from 0 month up till 59 months
+  * Calculate age-specific probability of fertility (ASFP) for women aged 15-49 years at the time of interview  
+3. Use Singular Value Decomposition (SVD) approach to model schedules of ASDP and ASFP  
+4. Use Microsimulation to estimate the distribution of total number of children ever born and total number of children survived, assuming that the woman live through the ASFP schedule for fertility during her reproductive years, and her children follows the ASDP schedule for survival.  
+
+More details are provided as follows.  
+
+# 1. Prepare births and women's datasets 
+
+```{r set up, include=FALSE}
+### set environment
+rm(list=ls())
+knitr::opts_chunk$set(echo = FALSE)
+#knitr::opts_knit$set(root.dir = "~/Dropbox/OSU/Research_IPR/BrassMethod/")
+#setwd("C:/Users/chu.282.ASC/Dropbox/OSU/Research_IPR/BrassMethod/") #Windows
+
+#get packages
+packages <- c("foreign","devtools","tidyverse","data.table","knitr","kableExtra","xtable",
+              "ggplot2", "plyr","expss","xlsx","lsmeans","car","dplyr","lattice","stargazer","raster",
+              "readr","stringr","reshape2","readr","readxl",
+              "httr","RCurl","XML","rvest", #xml
+              "svdComp5q0", "rdhs","DHS.rates","readstata13","SUMMER","configr",
+              "rethinking") #beyesian 
+new.packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+if(!('svdComp5q0' %in% installed.packages()[,"Package"])) devtools::install_github('sinafala/svdComp5q0')
+if(!('rethinking' %in% installed.packages()[,"Package"])) devtools::install_github('rmcelreath/rethinking')
+
+#load libraries
+suppressMessages(lapply(packages, require, character.only = TRUE)) #if rJava doesn't work, "sudo R CMD javareconf" in terminal to reconfigure JAVA environment.
+
+#load short functions
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+#load("Brass_SVD_MRFR.RData") #Data saved at the last step can could be directly reloaded for future use.
+```
+
+## 1.1 Get available DHS datasets  
+
+```{r get dhs, include=FALSE}
+
+####################
+# Get available DHS datasets using rdhs
+####################
+# set dhs configuration
+#set_rdhs_config(email = "ychu19@jhu.edu"
+#                , project = "Subnational vaccine coverage estimates using DHS modeled-surface"
+#                , cache_path = "~/Dropbox/OSU/Research_IPR/BrassMethod/DHSData_raw"
+#                , config_path = "rdhs.json"
+#                #, password_prompt = TRUE #chuyue, unmute this when first running the code to enter password
+#                , global = FALSE) # 4 countries
+
+#config <- get_rdhs_config() # check config values to make sure username, project are correct
+read.config("./rdhs.json")
+
+# get birth records and women records, .dta datasets for surveys after 2000
+file_format <- "Stata dataset (.dta)" #extract dta files
+identical(rdhs:::file_dataset_format(file_format),"dta")
+datasets <- get_available_datasets(clear_cache = FALSE)
+survey_type <- "DHS" #DHS file only
+survey_start <- 2000 #start with surveys after 2000
+table(datasets$FileType) #find file type names for births and women's record
+table(datasets$SurveyType) #see available survey types
+
+# list of all available birth records
+datasets_birth <- datasets[datasets$FileFormat==file_format & 
+                             datasets$FileType=="Births Recode" & 
+                             datasets$SurveyType == survey_type & 
+                             datasets$SurveyYear>=survey_start &
+                             !is.na(datasets$SurveyId),]
+# list of all available women records
+datasets_women <- datasets[datasets$FileFormat==file_format & 
+                             datasets$FileType=="Individual Recode" & 
+                             datasets$SurveyType == survey_type & 
+                             datasets$SurveyYear>=survey_start &
+                             !is.na(datasets$SurveyId),]
+
+#check if file names are all unique
+length(unique(datasets_birth$FileName))==length(datasets_birth$FileName)
+length(unique(datasets_women$FileName))==length(datasets_women$FileName)
+
+#get actual data - rds format
+data_birth<-get_datasets(datasets_birth$FileName, download_option = "rds") #clear_cache = TRUE
+data_women<-get_datasets(datasets_women$FileName, download_option = "rds")
+
+#Warning: The following requested dataset file names are used by more than one dataset:KEBR42DT.ZIP, KEIR42DT.ZIP
+#Mannually checked: the datasets are still correctly downloaded.
+
+##demo test with selected datasets first
+sample<-10
+datasets_birth <- datasets_birth[1:sample,]
+datasets_women <- datasets_women[1:sample,]
+```
+
+```{r get births, include=FALSE}  
+# get DHS variables needed for death probabilities calculation
+question_birth <- c("v005","v007","v008","v021","v022","v025","b3","b7","v001","v002","v024","v025")
+
+# find datasets with needed variables
+birthvar<-search_variables(names(data_birth), question_birth, essential_variables=question_birth)
+
+# Extracts data from downloaded datasets according to a data.frame of requested survey variables
+data_birth_extract<-extract_dhs(birthvar[birthvar$survey_id %in% datasets_birth$SurveyId,])
+```  
+
+```{r get women, include=FALSE}  
+# get DHS variables needed for fertility probabilities calculation
+question_women <- c("caseid", "v005","v007","v008","v011","v021","v022","v025","v001","v002","v024","v025",
+                    "b3_01","b3_02","b3_03","b3_04","b3_05","b3_06","b3_07","b3_08","b3_09","b3_10",
+                    "b3_11","b3_12","b3_13","b3_14","b3_15","b3_16","b3_17","b3_18","b3_19","b3_20",
+                    "b7_01","b7_02","b7_03","b7_04","b7_05","b7_06","b7_07","b7_08","b7_09","b7_10",
+                    "b7_11","b7_12","b7_13","b7_14","b7_15","b7_16","b7_17","b7_18","b7_19","b7_20") #"v101","v102",
+
+# find datasets with needed variables
+womenvar<-search_variables(names(data_women), question_women, essential_variables=question_women)
+
+# Extracts data from downloaded datasets according to a data.frame of requested survey variables
+data_women_extract<-extract_dhs(womenvar[womenvar$survey_id %in% datasets_women$SurveyId,])
+```  
+
+Among all DHS surveys conducted after year 2000, a total of `r length(data_birth)` surveys have publically available birth records, while a total of `r length(data_women)` surveys have publically available women's records. For the ease of code-runnning for this demo project, we used the only a subset of available DHS surveys, including 10 births records and 10 women datasets. Data were accessed at [DHS program website] (https://dhsprogram.com/data/available-datasets.cfm). (Table 1)  
+
+
+```{r table 1, echo=FALSE, results='asis'}  
+library(knitr)
+kable(as.data.frame(datasets_birth[,c("CountryName","SurveyYear","SurveyId")]), caption="List of surveys used in the analysis") #, datasets_women$SurveyID
+```  
+ 
+# 2 Calculate component probability of births and deaths  
+
+
+## 2.1 Component probability of deaths by month of age  
+Age-specific probability of deaths for children under-five were calculated by children's month of age, for a total of 60 age segments. The calculation of component probability of births follows the classifcal DHS approach, only with higher resolution of age groups. The methods were described in details in DHS methodology reports.[@croft2018guide]   
+
+
+```{r asdp calculation, echo=FALSE, include=FALSE}  
+####################
+# calculate age-sepcific child deaths probabilities
+####################
+refperiod <-36 #reference period of survey (in months)
+chmortp<-list()
+#calculate component death probabilities by month
+for (i in 1:length(data_birth_extract)) { 
+  runtime.start<-Sys.time()
+  Data.Births<-data_birth_extract[[i]]
+  
+  # get needed parameters
+  Data.Births$weight <- Data.Births$v005
+  Data.Births$doi <- Data.Births$v008
+  Data.Births$bdob <- Data.Births$b3
+  Data.Births$bdod <- Data.Births$b7
+  Data.Births$period = refperiod   # refence period in months      
+  Data.Births$periodend <- Data.Births$v008
+  #Time period - t_l start and t_u is end/interview date
+  Data.Births$tu <- Data.Births$periodend
+  Data.Births$tl <- Data.Births$periodend - Data.Births$period
+  
+  #prepare survey design parameters  
+  Data.Births$rweight = Data.Births$v005/1000000
+  #regionVar="v101"; residenceVar="v102"; 
+  clusterVar= "~v001+v002"; strataVar="~v024+v025"; clusterVar="~v021";
+  
+  # drop values wihtout valid weights
+  Data.Births <- as.data.frame(Data.Births[!Data.Births$v005 == 0,]) 
+  
+  set.seed(416+i)
+  #randomly distribute deaths reported at multiple-of-12 months to the subsequent months assuming uniform distribution
+  #randomly distribute deaths reported at 6 and 18 months to the neighborhood months assuming like-normal distribution c(0.1,0.2,0.4,0.2,0.1)
+  Data.Births$b7raw<-Data.Births$b7
+    #assuming people are reporting "full years completed" - redistributing forward
+     for (heap in c(6,18,(2:4)*12)) {
+      if (heap==6 | heap==12 | heap==18) {
+        Data.Births$b7adjust[Data.Births$b7==heap & !is.na(Data.Births$b7)]<-
+          sample(c(-2,-1,0, 1, 2), size = length(Data.Births$b7[Data.Births$b7==heap & !is.na(Data.Births$b7)]), replace = TRUE, prob = c(0.1,0.2,0.4,0.2,0.1))
+      } else {
+        Data.Births$b7adjust[Data.Births$b7==heap & !is.na(Data.Births$b7)]<-
+          sample(0:11,length(Data.Births$b7[Data.Births$b7==heap & !is.na(Data.Births$b7)]), replace=TRUE)   
+      }
+      Data.Births$b7[Data.Births$b7==heap & !is.na(Data.Births$b7)]<-Data.Births$b7adjust[Data.Births$b7==heap & !is.na(Data.Births$b7)]+Data.Births$b7[Data.Births$b7==heap & !is.na(Data.Births$b7)]
+    }
+  
+  ## generate figures to check raw vs adjusted age at death density distribution
+  png(filename=paste("RawAAD_",unique(Data.Births$SurveyId),".png",sep=""))
+  par(mfrow=c(1,1))
+  # plot(density(Data.Births$b7raw[Data.Births$b7raw<=60 & !is.na(Data.Births$b7raw)]),
+  #      xlim=c(0,60),
+  #      lwd=1, col="blue", type="l", main=unique(Data.Births$SurveyId), xlab="Age(month)")
+  hist(Data.Births$b7raw[Data.Births$b7raw<60 & !is.na(Data.Births$b7raw)],breaks=60,
+       prob=TRUE,
+       main=unique(Data.Births$SurveyId), xlab="Age(month)")
+  lines(density(Data.Births$b7[Data.Births$b7<60 & !is.na(Data.Births$b7)]),
+        xlim=c(0,60), lwd=1, col="red")
+  legend("topright", legend=c("Adjusted age at death"),
+         col=c("red"), lty=1, cex=0.7)
+  dev.off()
+  
+  # create empty data frame to store result
+  ageseg<-list() 
+  for (k in 1:59) {
+    ageseg[[k]]<-c(k-1,k)
+    names(ageseg)[k]<-paste(k-1,"-",k," mon", sep="")
+  }
+  
+  # count number of children alive at beginning of age group and deaths in the age group
+  agegroup <- deathprobn <- deathprobd <- wdeathprob <- wdeathprobn <- wdeathprobd <- deft <- numeric(length=length(ageseg))
+  names(agegroup) <- names(deathprobn) <- names(deathprobd) <- names(wdeathprob) <- names(wdeathprobn) <- names(wdeathprobd) <- names(deft) <- names(ageseg)
+  
+  for (j in seq_along(ageseg)) { #j is the jth age segment
+    # print(j)
+    # calculate exposure as denominator
+    segdata <- Data.Births[which((Data.Births$b7 >= ageseg[[j]][1]) | is.na(Data.Births$b7)), ]
+    segdata$exposure <- NA
+    segdata$exposure[segdata$b3 >= (segdata$tl - ageseg[[j]][2]) &
+                       segdata$b3 < (segdata$tl - ageseg[[j]][1]) ] <- 0.5 #1/2 survivors at a_l of cohort A
+    segdata$exposure[segdata$b3 >= (segdata$tl - ageseg[[j]][1]) &
+                       segdata$b3 < (segdata$tu - ageseg[[j]][2]) ] <- 1 #all survivors at a_l of cohort B
+    segdata$exposure[segdata$b3 >= (segdata$tu - ageseg[[j]][2]) &
+                       segdata$b3 < (segdata$tu - ageseg[[j]][1]) ] <- 0.5 #1/2 survivors at a_l of cohort C
+    
+    # calculate deaths as numerator
+    segdata$death <- NA
+    segdata$death[segdata$b3 >= (segdata$tl - ageseg[[j]][2]) &
+                    segdata$b3 < (segdata$tl - ageseg[[j]][1]) &
+                    (segdata$b7 >= ageseg[[j]][1] & segdata$b7 < ageseg[[j]][2])] <- 0.5 #1/2 deaths of cohort A
+    segdata$death[segdata$b3 >= (segdata$tl - ageseg[[j]][1]) &
+                    segdata$b3 < (segdata$tu - ageseg[[j]][2]) &
+                    (segdata$b7 >= ageseg[[j]][1] & segdata$b7 < ageseg[[j]][2])] <- 1 #all deaths of cohort B
+    segdata$death[segdata$b3 >= (segdata$tu - ageseg[[j]][2]) &
+                    segdata$b3 < (segdata$tu - ageseg[[j]][1]) &
+                    (segdata$b7 >= ageseg[[j]][1] & segdata$b7 < ageseg[[j]][2])] <- 0.5 #1/2 deaths of cohort C #ifelse(is.null(PeriodEnd) , 1, 0.5)
+    segdata$death[is.na(segdata$b7)] <- 0 #0 death if age at death is NA        
+    
+    # calculate weighted probability of death
+    wdeathprobn[names(ageseg)[j]] <- sum(segdata$death * segdata$rweight, na.rm = TRUE) #weighted number of death - numerator
+    wdeathprobd[names(ageseg)[j]] <- sum(segdata$exposure * segdata$rweight, na.rm = TRUE) #weighted number of death - denominator
+    wdeathprob[names(ageseg)[j]] <- wdeathprobn[names(ageseg)[j]] / wdeathprobd[names(ageseg)[j]] #weighted component death probability
+    deathprobn[names(ageseg)[j]] <- sum(segdata$death, na.rm = TRUE) #unweighted deaths
+    deathprobd[names(ageseg)[j]] <- sum(segdata$exposure, na.rm = TRUE) #unweighted survivors
+    agegroup[names(ageseg)[j]]<-names(ageseg)[j]
+    
+    #DEFT: design effect
+    if (i==20) { #v022 in the survey are all NAs
+      dstrat<-survey::svydesign(id = ~v021, strata = ~v024+v025, weights = ~rweight, data = segdata, nest=TRUE)
+    } else {
+      dstrat<-survey::svydesign(id = ~v021, strata = ~v022, weights = ~rweight, data = segdata, nest=TRUE)    
+      }
+    options(survey.lonely.psu = "certainty")
+    deft[names(ageseg)[j]]<- sqrt(survey::deff(survey::svyratio(~death, ~exposure, dstrat, deff = "replace")))
+  }
+  
+  chmortp[[i]]<-data.frame(agegroup, wdeathprob, wdeathprobn, wdeathprobd, deathprobn, deathprobd, deft)
+  names(chmortp)[i]<-names(data_birth_extract)[i]
+  runtime.end<-Sys.time()
+  print(runtime.end-runtime.start)
+  
+  }
+
+  # create a table with only age-specific death probabilities (ASDP)
+  asdp_table<-as.data.frame(chmortp[[1]][,1:2,drop=FALSE])
+  chmortp[[1]] #check things look right
+  colnames(asdp_table)[colnames(asdp_table)=="wdeathprob"] <- substr(datasets_birth$SurveyId[substr(datasets_birth$FileName,1,8)==names(data_birth_extract)[1]],1,6) #names(chmortp)[1]
+  for (i in 2:length(chmortp)) { 
+    print(i)
+    asdp_table[,(i+1)]<-chmortp[[i]][,c("wdeathprob")]
+    colnames(asdp_table)[i+1] <- substr(datasets_birth$SurveyId[substr(datasets_birth$FileName,1,8)==names(chmortp)[i]],1,6)
+  }
+```  
+
+### 2.1.1 Age heaping and adjustment of age at death  
+There were two major challenges in the process of generating probability of deaths estimates by months for children under-five:  
+First, age at deaths are reported by month only for children under 24-months of age, and are reported by full years completed instead for children aged 24 and above. In this paper, deaths with age at death reported in full years (as multiples of 12 months for 24 months and above) are redistributed to subsequent months, assuming uniform distribution of death through out the year.  
+Second, age heaping also exists in DHS birth histories. People tend to round the age at death to 6, 12 and 18 months, resulting in significantly more deaths in these two months comparing to the neighboring months. In this paper, deaths occurred at 6, 12 and 18 months are also redistributed to neighboring months ($\pm$ 2 months) with symmetrically graduated probabilities P(0.1, 0.2, 0.4, 0.2, 0.1).  
+
+
+Figure 1. Density distribution of age at death among children under-five  
+
+![Figure 1.a AF2015 DHS](RawAAD_AF2015DHS.png){width=40%} ![Figure 1.b AO2015 DHS](RawAAD_AO2015DHS.png){width=40%}  
+![Figure 1.c AM2000 DHS](RawAAD_AM2000DHS.png){width=40%} ![Figure 1.c AM2000 DHS](RawAAD_BD2000DHS.png){width=40%}  
+
+
+After the adjustments, the density distribution of age at deaths are overall smooth without obvious clustering at certain post-neonatal age groups. (Figure 1) Thus we decide not to perform further smoothing at this point. However we should also keep in mind that the bumpiness could be more obvious after log-transformation, thus affect the model performance for fitting age schedules. This will be demostrated later.   
+
+## 2.1.2 Age-specific death probabilities by month of age   
+
+Figure 2 demonstrates the age-specific death probabilities by month of age from selected surveys.    
+
+```{r figure 2, include=FALSE}
+# plot to see what it looks like
+png(filename="asdp_log_allcountries.png")
+asdp_table$agelab<-c(1:nrow(asdp_table))
+plot(logit(asdp_table[,2]+0.0001)~asdp_table$agelab, 
+     type="l",col=2,xlim=c(0,60), #, ylim=c(0,0.05)
+     ylab="Age-specific death probability (logit)", xlab="Age (month)")
+for (i in 3:(ncol(asdp_table)-1)) {
+  #points(asdp_table[asdp_table[,i]>0.00001,i],col=i)  
+  lines(logit(asdp_table[,i]+0.0001)~asdp_table$agelab,col=i)  
+}
+```. 
+
+Figure 2. ASDP log transformed 
+![Figure 2. ASDP log transformed ](asdp_log_allcountries.png){width=40%}
+
+
+## 2.2 Component probability of births by month of age  
+Age-specific probability of giving birth for women of reproductive age (aged 15 to 49 years) were also calcualted by women's month of age, for a total of 419 age segments. The calculation of component probability of births also followed the classifcal DHS approach, with higher resolution of age groups. The methods were described in details in DHS methodology reports.[@croft2018guide]   
+
+
+```{r asfp calculation, include=FALSE}  
+#################### , warnings=FALSE
+# calculate age-sepcific fertility probability for single-month age groups
+####################
+fertp<-list()
+for (i in 1:length(data_women_extract)) { #
+  print(i)
+  runtime.start<-Sys.time()
+  #i<-1
+  Data.Women<-data_women_extract[[i]]
+  # get needed parameters
+  Data.Women$id <- Data.Women$caseid
+  Data.Women$weight <- Data.Women$v005
+  Data.Women$doi <- Data.Women$v008
+  Data.Women$bdob <- Data.Women$b3
+  Data.Women$bdod <- Data.Women$b7
+  Data.Women$intv <- Data.Women$v008
+  
+  Data.Women$period = refperiod   # refence period in months      
+  Data.Women$periodend <- Data.Women$v008
+  
+  #Time period - t1 start and t2 is end/interview date
+  Data.Women$t2 <- Data.Women$periodend
+  Data.Women$t1 <- Data.Women$periodend - Data.Women$period
+  #survey design parameters  
+  Data.Women$rweight <- Data.Women$v005/1000000 
+  strataVar="~v024+v025"; clusterVar="~v021"; varmethod="lin";  
+
+  # drop values without valid weight
+  Data.Women <- as.data.frame(Data.Women[!Data.Women$v005 == 0,]) 
+  
+  periodendy_ <- as.integer((mean(Data.Women$v008)-1)/12)+1990
+  periodendm_ <- round(mean(Data.Women$v008)-((periodendy_-1990)*12),0)
+  
+  periodendm_m <-round(min(Data.Women$v008)-((periodendy_-1990)*12),0)
+  periodendm_x <- round(max(Data.Women$v008)-((periodendy_-1990)*12),0)
+  
+  Data.Women$allwoment<-1 # using all women's record, rather than ever married women
+    #otherwise: Data.Women$all.woment<-Data.Women$awfactt/100 #if only interviewed ever-married women
+  
+  ##prepare dataset - lay out exposure and flag time points giving birth by month
+  #identify births born to women 15-49yr during the reference period
+    births <- reshape::melt(Data.Women[,c("id", "v021", "v005", "v008", "v011", "v022", "allwoment", "rweight", 
+                                          "period","periodend", grep("^b3\\_[0-9]*", names(Data.Women), value=TRUE))], 
+                            id = c("id", "v021", "v005", "v008", "v011", "v022", "rweight", "allwoment","period","periodend"))
+    names(births)[names(births) == c("value")] <- c("B3")  
+    births$variable <- NULL
+    
+    births$agegroup <- births$B3 - births$v011 #women's age group at the time of birth
+    births$birth <- 0
+    births$birth[births$periodend > births$B3 & births$periodend - births$B3 <= births$period &
+                   births$agegroup >= 15*12 & births$agegroup < 50*12] <- 1 
+    births <- births[stats::complete.cases(births$agegroup), ] #use only complete cases
+  
+  # Calcualte exposure of women aged 15-49
+    womenexp_cur<-Data.Women[,c("id", "v021", "v005", "v008", "v011", "v022", "rweight", "allwoment","periodend","period")]
+    womenexp_cur$agegroup <- womenexp_cur$periodend - womenexp_cur$v011 - 1 #age at the interview
+    womenexp_cur$exp <- 1  #Exposure in current age month
+    womenexp_cur <- womenexp_cur[womenexp_cur$agegroup >= 15*12, ] #keep women above 15yr at the time of interview 
+  
+    womenexp_long<-womenexp_cur
+    for (prev in c(1:refperiod)) {
+      #print(prev)
+      womenexp_prev<-womenexp_cur
+      womenexp_prev$agegroup <- womenexp_prev$agegroup - prev
+      womenexp_prev$exp<-ifelse((womenexp_prev$agegroup >=15*12), 1, 0) #whether women is exposed to previous age group
+      womenexp_long<-rbind(womenexp_long, womenexp_prev)
+    }
+    births$B3 <- NULL
+    births$exp <- womenexp_long$birth <- 0
+    # names(births);names(womenexp_long) #check names matches before binding
+    womenexp<-rbind(births, womenexp_long)
+      rm(womenexp_prev, births, womenexp_long) #remove database of no use
+    womenexp_aggr<- base::merge(stats::aggregate(list(womenexp$birth, womenexp$exp),
+                                           list(womenexp$id, womenexp$v021, womenexp$v022, womenexp$agegroup, womenexp$allwoment), sum),
+                          stats::aggregate(womenexp$rweight, list(womenexp$id), mean), by = "Group.1")
+    names(womenexp_aggr) <- c("id", "v021", "v022", "agegroup", "allwoment", "birth", "exposure", "rweight")
+    womenexp <- womenexp_aggr[(womenexp_aggr$birth != 0 | womenexp_aggr$exposure != 0), ]
+    womenexp$v021 <- c(as.factor(womenexp$v021))
+    womenexp$exposure <- womenexp$allwoment * womenexp$exposure #in case sampling only among ever-married women
+  
+    women.svydesign <- survey::svydesign(id = ~ v021, strata = ~ v022, weights = ~ rweight, nest=TRUE, data = womenexp)
+    
+    # create age group names
+    ageseg<-c()
+    for (k in c((15*12):(50*12-2))) {
+      ageseg[k-15*12+1]<-paste(k,"-",k+1," mon", sep="")
+    }
+    
+    asfp <- (survey::svyby(~ birth, by = ~ agegroup, denominator = ~ exposure,
+                           design = women.svydesign, survey::svyratio))[, 2]
+    
+    deft <- sqrt(survey::svyby(~ birth, by = ~ agegroup, denominator = ~ exposure,
+                               design = women.svydesign, deff = "replace", survey::svyratio)$DEff)
+    
+    exposure <- stats::aggregate(womenexp$exposure, list(womenexp$agegroup), sum)$x
+    wexposure <- (survey::svyby(~ exposure, by = ~ agegroup, design = women.svydesign, survey::svytotal))$exposure
+    
+    fertp[[i]] <- cbind.data.frame(ageseg,asfp,exposure,wexposure,deft)
+    
+    names(fertp)[i]<-names(data_women_extract)[i]
+    runtime.end<-Sys.time()
+    print(runtime.end-runtime.start)
+  
+}
+
+  asfp_table<-as.data.frame(fertp[[1]][,1:2,drop=FALSE])
+  fertp[[1]]
+  colnames(asfp_table)[colnames(asfp_table)=="asfp"] <- substr(datasets_women$SurveyId[substr(datasets_women$FileName,1,8)==names(data_women_extract)[1]],1,6)
+  for (i in 2:length(fertp)) { 
+    print(i)
+    asfp_table[,(i+1)]<-fertp[[i]][,c("asfp")]
+    colnames(asfp_table)[i+1] <- substr(datasets_women$SurveyId[substr(datasets_women$FileName,1,8)==names(fertp)[i]],1,6)
+  }
+
+```  
+
+Figure 3 demonstrates the age-specific birth probabilities by month of age from selected surveys. We noticed high level of fluctuation for monthly-estimation for individual surveys. The trend became smoother and more stabelized when we aggregated multiple surveys together.        
+
+```{r figure 3, include=FALSE}  
+## check the age-specific fertility probability outcome, plot to see what it looks like
+  asfp_table$agelab<-c((1:nrow(asfp_table))+15*12-1)
+  png(filename="asfp_log_allcountries.png")
+  plot(asfp_table[,2]~asfp_table[,c("agelab")], 
+       type="l",col=2, lwd=0.2, #ylim=c(0,0.05),xlim=c(0,50),
+       ylab="Age-specific fertility probabilities", xlab="Age (month)")
+  for (i in 3:(ncol(asfp_table)-1)) {
+    lines(asfp_table[,i]~asfp_table[,c("agelab")],lwd=0.2, col=i)  
+  }
+    lines(rowMeans(asfp_table[,2:(ncol(asfp_table)-1)])~asfp_table[,c("agelab")],lwd=1, col="red")
+```  
+
+
+# 3. Modeling age patterns for deaths and births using     
+
+We used Singular Value Decomposition (SVD) approach to construct general, parsimonious component models of age schedules for age-specific mortality and fertility rates. The method was described in details in Clark, 2015 publication. [@Clark:2015tp] Briefly speaking, the SVD approach first factorizes a matrix of demographic estimates (denoted as X) into three matrices - namely a matrix of ‘left singular vectors’ (LSVs) arranged in columns (denoted as U), a matrix of ‘right singular vectors’ (RSVs) arranged in columns (denoted as V), and a diagonal matrix of ‘singular values’ (SVs) (denoted as S) (equation demostrated as below). Then the matrix of demographic age schedules could be reconstructed with weighted-sum of much fewer components from the component model, yet still yielding a reasonably realiable estimation.  
+
+$$
+{X} = {U S V}^{-1}
+$$
+
+The ASDP and ASFP matrices constructed above from sample DHS surveys were used as the input data sources to train the models. We took the first four components from the SVD for estimation of age-specific probability of death, and took the first four components from the SVD for estimation of age-specific probability of birth.  
+
+
+```{r svd mort, include=FALSE}
+
+####################
+# SVD of child mortality
+####################
+#logit transform 
+qlogit<-logit(asdp_table[,2:(ncol(asdp_table)-2)]+0.0001) #last 2 columns agegroup and agegroup_mid
+
+# function to generate 5q0 from a matrix of 1(month)qx
+  qaggr <- function(q1,start,end) { # q1 is an age by life table matrix of 1(month)qx
+    # qaggr is 1 by life table matrix/vector of aggregated q
+    # start & end are start and end of age group (in month)
+    tmp.q <- rep(1,ncol(q1))
+    for (i in start:end) { tmp.q <- tmp.q * (1-q1[i,])  }
+    qaggr <- as.matrix(1-tmp.q) 
+    rownames(qaggr)[1]<-paste("Q(",start-1,"-",end,"month)",sep="")
+    return(qaggr)
+  }
+  Q5<-qaggr(asdp_table[,2:(ncol(asdp_table)-2)],1,59)
+  Q45<-Q5*2 #placeholder, not used
+  Qlogit<-rbind(logit(Q5), logit(Q45))
+  
+# base model - with 5q0
+  source('svdMod.R')
+  N <- 1
+  S <- 1
+  C <- 4
+  offset <- 10
+  svd.mort1 <- svdMod(qlogit,Qlogit,N,S,offset,retAll=TRUE,adult=FALSE,q0Fix=TRUE,smooth=FALSE,C)
+
+  # get svd output
+  svd.d<-as.matrix(svd.mort1$svd$s1$d)
+  svd.u<-svd.mort1$svd$s1$u
+  svd.v<-svd.mort1$svd$s1$v
+  
+  # take a look at v
+  par(mfrow=c(1,2))
+  dens(svd.v[,1], col="lightblue", xlab="svd.v.1", main="SVD mortality")
+  dens(svd.v[,2], col="orange", xlab="svd.v.2")
+  dev.off()
+  
+  #graph the svd modeled estimates - unsmoothed with raw data
+  png(filename="svd.mort1_unsmoothed_wraw.png")
+  plot(qlogit[,1],type="l",ylim=c(-10,-2), lwd=0.3
+          , xlab="Age", ylab="Probability of dying (qlogit)"
+          , main= "SVD child mortality, component 1:4") # the first component
+  for (i in 3:ncol(qlogit)) {
+    points(qlogit[,i],type="l",lwd=0.3, col=i)
+  }  
+  points(mean(svd.v[,1])*svd.d[1]*svd.u[,1] + 
+           mean(svd.v[,2])*svd.d[2]*svd.u[,2] + 
+           mean(svd.v[,3])*svd.d[3]*svd.u[,3] + 
+           mean(svd.v[,4])*svd.d[4]*svd.u[,4] + offset
+         , col="red", lwd=3, type="l")
+  
+  #not smoothed enough? - compare to trend of raw data, check the last modeled survey as example
+  a<-count(Data.Births$b7raw[Data.Births$b7raw<60 & !is.na(Data.Births$b7raw)])
+  a$plog<-logit(a$freq/sum(a$freq)+0.0001)
+  b<-count(Data.Births$b7[Data.Births$b7<60 & !is.na(Data.Births$b7)])
+  b$plog<-logit(b$freq/sum(b$freq)+0.0001)
+
+  png(filename=paste("asdp_qlogit_adj_vs_raw_",colnames(asdp_table)[ncol(asdp_table)-1],".png",sep=""))
+  par(mfrow=c(2,2))
+  plot(b$plog~b$x,type="l",xlab="adjusted age at death",ylab="density",main=colnames(asdp_table)[ncol(asdp_table)-1])
+  plot(a$plog~a$x,type="l",xlab="raw age at death",ylab="density")
+  plot(qlogit[,ncol(qlogit)],type="l",xlab="adjusted qlogit",ylab="qlogit")
+  plot(asdp_table[,ncol(asdp_table)-1],type="l",xlab="adjusted q",ylab="q")
+  dev.off()
+  
+  # unsmoothed
+  png(filename="svd.mort1_su1-4.png")
+  par(mfrow=c(2,2))
+  plot(svd.mort1$svd$s1$u[,1]*svd.mort1$svd$s1$d[1], type="l", col="coral", lwd=2, main="s1u1", xlab="age",ylab="")
+  plot(svd.mort1$svd$s1$u[,2]*svd.mort1$svd$s1$d[2], type="l", col="coral", lwd=2, main="s2u2", xlab="age",ylab="")
+  abline(h=0)
+  plot(svd.mort1$svd$s1$u[,3]*svd.mort1$svd$s1$d[3], type="l", col="coral", lwd=2, main="s3u3", xlab="age",ylab="")
+  abline(h=0)
+  plot(svd.mort1$svd$s1$u[,4]*svd.mort1$svd$s1$d[4], type="l", col="coral", lwd=2, main="s4u4", xlab="age",ylab="")
+  abline(h=0)
+  dev.off()
+
+```   
+
+Figure 4.a compares the SVD modeled age schedule for probability of deaths by month among children under-five to the empirical probability of deaths from DHS surveys used as model input. And Figure4.b shows the schedules for the first 4 components in the SVD models, $s_iu_i$, which are the LSVs from the SVD of DHS probability of deaths schedules scaled by their corresponding singular values.  
+
+
+Figure 4.a SVD for log-transformed age-specific probability of death, modeled vs empirical  
+![Figure4.a SVD for ASDP](svd.mort1_unsmoothed_wraw.png){width=50%}
+
+Figure 4.b SVD components for log-transformed age-specific probability of death  
+![Figure4.b SVD for ASDP](svd.mort1_su1-4.png){width=50%}
+
+
+```{r svd fert, include=FALSE}
+offset.fert<-0
+flogit<-logit(asfp_table[,2:(ncol(asfp_table)-1)]+0.0001) #last column age group label
+svd.fert1 <- svd(flogit-offset.fert)
+svd.fert1$d
+round(100*svd.fert1$d^2/sum(svd.fert1$d^2),2)
+sum((100*svd.fert1$d^2/sum(svd.fert1$d^2))[1:4])
+tfr<-colSums(asfp_table[,2:(ncol(asfp_table)-1)])
+
+# get svd output
+svd.d<-as.matrix(svd.fert1$d)
+svd.u<-svd.fert1$u
+svd.v<-svd.fert1$v
+
+# take a look at v
+par(mfrow=c(1,2))
+dens(svd.v[,1], col="lightblue", xlab="svd.v.1", main="SVD mortality")
+dens(svd.v[,2], col="orange", xlab="svd.v.2")
+dev.off()
+
+#graph the svd - unsmoothed with raw data
+png(filename="svd.fert1_unsmoothed_wraw.png")
+# the first component
+plot(flogit[,1],type="l",ylim=c(-10,-2), lwd=0.3
+     , xlab="Age", ylab="Probability of birth (flogit)"
+     , main= "SVD women fertility, component 1:4")
+for (i in 3:ncol(flogit)) {
+  points(flogit[,i],type="l",lwd=0.3, col=i)
+}  
+points(mean(svd.v[,1])*svd.d[1]*svd.u[,1] + 
+         mean(svd.v[,2])*svd.d[2]*svd.u[,2] + 
+         mean(svd.v[,3])*svd.d[3]*svd.u[,3] + 
+         mean(svd.v[,4])*svd.d[4]*svd.u[,4] #+ offset.fert
+       , col="red", lwd=3, type="l")
+
+# unsmoothed
+png(filename="svd.fert1_su1-4.png")
+par(mfrow=c(2,2))
+plot(svd.u[,1]*svd.d[1], type="l", col="coral", lwd=2, main="s1u1", xlab="age",ylab="")
+plot(svd.u[,2]*svd.d[2], type="l", col="coral", lwd=2, main="s2u2", xlab="age",ylab="")
+abline(h=0)
+plot(svd.u[,3]*svd.d[3], type="l", col="coral", lwd=2, main="s3u3", xlab="age",ylab="")
+abline(h=0)
+plot(svd.u[,4]*svd.d[4], type="l", col="coral", lwd=2, main="s4u4", xlab="age",ylab="")
+abline(h=0)
+dev.off()
+
+```
+
+Similar to the figures above, Figure 5.a compares the SVD modeled age schedule for probability of giving births by month among women of reproductive age to the empirical probability of births from DHS surveys used as model input. And Figure5.b shows the schedules for the first 4 components in the SVD models, $s_iu_i$, which are the LSVs from the SVD of DHS probability of births schedules scaled by their corresponding singular values.  
+
+Figure 5.a SVD for log-transformed age-specific probability of death, modeled vs empirical  
+![Figure5.a SVD for ASDP](svd.fert1_unsmoothed_wraw.png){width=50%}
+
+Figure 5.b SVD components for log-transformed age-specific probability of death  
+![Figure5.b SVD for ASDP](svd.fert1_su1-4.png){width=50%}
+
+
+```{r save files, include=FALSE}
+# save files might be useful for later use
+#save.image(file = "Brass_SVD_MRFR.RData") #unmute this to save data for future use
+```
+
+
+# Microsimulation (Upcoming)  
+
+Then we used microsimulation to estimate the distribution of total number of children ever born and total number of children survived, assuming that the woman live through the ASFP schedule for fertility during her reproductive years, and her children follows the ASDP schedule for survival.  
+
+```{r, include=FALSE}
+#############################
+# Microsimulation
+#############################
+# state-transition microsimulation
+#source('./Brass_SVD_MRFR.R')
+
+# child survival schedule - probability of dying
+offset.mort<-10
+qlogit.output<-as.data.frame(cbind(#c("0", "1-2", "3-5", "6-11", "12-23", "24-35", "36-47", "48-59"), 
+  asdp_table$agegroup,
+  as.numeric(round(mean(svd.mort1$svd$s1$v[,1])*svd.mort1$svd$s1$d[1]*svd.mort1$svd$s1$u[,1] + 
+                     mean(svd.mort1$svd$s1$v[,2])*svd.mort1$svd$s1$d[2]*svd.mort1$svd$s1$u[,2] + 
+                     mean(svd.mort1$svd$s1$v[,3])*svd.mort1$svd$s1$d[3]*svd.mort1$svd$s1$u[,3] + 
+                     mean(svd.mort1$svd$s1$v[,4])*svd.mort1$svd$s1$d[4]*svd.mort1$svd$s1$u[,4] + offset.mort, digit=4) )))
+colnames(qlogit.output)<-c("age","asdp")
+# transform back to q
+mort.prob<-exp(qlogit.output$asdp)/(1+exp(qlogit.output$asdp)) #probability of dying by age group
+mort.cumq<-mort.prob[1]
+for (i in 2:length(mort.prob)) {
+  mort.cumq[i]<-1-(1-mort.cumq[i-1])*(1-mort.prob[i]) #cumulative probability of dying  
+}
+
+
+# women fertility schedule
+flogit.output<-as.data.frame( cbind(c(asfp_table$agelab+15*12-1),
+                                   round(mean(svd.fert1$v[,1])*svd.fert1$d[1]*svd.fert1$u[,1] + 
+                                           mean(svd.fert1$v[,2])*svd.fert1$d[2]*svd.fert1$u[,2] + 
+                                           mean(svd.fert1$v[,3])*svd.fert1$d[3]*svd.fert1$u[,3] + 
+                                           mean(svd.fert1$v[,4])*svd.fert1$d[4]*svd.fert1$u[,4] ) ))
+colnames(flogit.output)<-c("age","asfp")
+plot(flogit.output)
+fert1.prob<-exp(flogit.output$asfp)/(1+exp(flogit.output$asfp)) #probability of birth by age group
+#plot(fert.prob)
+
+
+# parameters
+n.i<-1000 # number of individuals (mother), 1 for now
+n.t<-length(c(1:nrow(asfp_table))) # number of cycles , assume all leave through reproductive period for now
+status.mother<-c("NB","B","D") # possible status of women, NB=no birth, B=give birth, D=death
+#Note: assume no death for now
+status.child<-c("L","D") # possible status of child, L=alive, D=dead
+
+# prepare output matrix and lists
+m.mother<-matrix(nrow=n.i, ncol=n.t+1,
+                 dimnames=list(paste("sim",1:n.i,sep=""),
+                               paste("age",0:n.t,sep=""))) # empty matrix to store mother sim birth history
+m.child<-as.data.frame(matrix(nrow=n.i, ncol=2, c(1:n.i,rep(0,n.i)),
+                              dimnames=list(paste("Sim",1:n.i,sep=""),c("sim","nchild")))) # empty matrix to store summary child survival history
+
+l.mother<-list() #empty list to store child by mother
+l.child<-list() #empty list to store child survival history
+
+l.p.fert<-list() #matrix of status transition probabilities
+for (i in 1:n.t) {
+  l.p.fert[[i]]<-matrix(nrow=3, ncol=3, c((1-fert1.prob[i]),(1-fert1.prob[i]),0,(fert1.prob[i]),(fert1.prob[i]),0,0,0,1),
+                        dimnames=list(c("current-NB","current-B","current-D"),
+                                      c("next-NB","next-B","next-D")))
+}
+
+for (i in 1:n.i)  { # loop through individuals
+  #i<-1
+  set.seed(416+i) # set seed for random number generator by individual
+  
+  # step 1: initial states of individual i at the start of reprodcutive period
+  m.mother[i,1] <- "NB" # no birth to start
+  childnum<-0 #child number start over
+  l.mother[[i]]<-list()
+  for (t in 1:n.t) { # loop through reproductive preriod of individual
+    # step 2: caculate transition probabilities for women
+    p.fert <- fert1.prob[t] #probability giving birth at age 14+t
+    
+    # step 3: sample status at cycle t+1 and store data
+    m.mother[i,t+1] <- sample(x=status.mother, prob=c((1-p.fert),p.fert,0), size=1)
+    
+    #print(m.mother[i,t+1]) #take a look
+    if (m.mother[i,t+1]=="B") { # if a women give birth in the cycle
+      print(t)
+      childnum<-childnum+1
+      childstat<-c("L") #child start as live birth
+      
+      # step 4. calculate transition probabilities for child
+      # child time points on mother's timeline
+      t.month<-t+c(1:59) 
+      # child survival status at each time point
+      for (k in 1:length(mort.prob)) {
+        p.mort <- mort.prob[k]
+        #m.child[childnum,k+1] <- sample(x=status.child, prob=c((1-p.mort),p.mort), size=1) # simulated mortality scenario
+        childstat[k+1] <- sample(x=status.child, prob=c((1-p.mort),p.mort), size=1) # simulated mortality scenario
+      }
+      l.child[[childnum]]<-as.data.frame(cbind(t.month, childstat))
+      if (length(childstat[childstat=="D"])>0){
+      }
+    }
+  } 
+  if (childnum>0) {
+    l.mother[[i]]<-list(l.child)
+    print(paste(childnum, "children born for women ", i, sep=""))
+    m.child$nchild[i]<-childnum
+  } else {
+    print(paste("No children born for women ",i,sep=""))
+  }
+  if (i/100==round(i/100,0)) { #display progress
+    cat("\r", paste(i/n.i*100, "% done", sep=" "))
+  }
+}
+```
+
+
+# References  
