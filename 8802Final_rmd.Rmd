@@ -38,8 +38,6 @@ More details are provided as follows.
 ### set environment
 rm(list=ls())
 knitr::opts_chunk$set(echo = FALSE)
-#knitr::opts_knit$set(root.dir = "~/Dropbox/OSU/Research_IPR/BrassMethod/")
-#setwd("C:/Users/chu.282.ASC/Dropbox/OSU/Research_IPR/BrassMethod/") #Windows
 
 #get packages
 packages <- c("foreign","devtools","tidyverse","data.table","knitr","kableExtra","xtable",
@@ -71,11 +69,11 @@ suppressMessages(lapply(packages, require, character.only = TRUE)) #if rJava doe
 ####################
 # set dhs configuration
 #set_rdhs_config(email = "ychu19@jhu.edu"
-#                , project = "Subnational vaccine coverage estimates using DHS modeled-surface"
-#                , cache_path = "~/Dropbox/OSU/Research_IPR/BrassMethod/DHSData_raw"
-#                , config_path = "rdhs.json"
-#                #, password_prompt = TRUE #chuyue, unmute this when first running the code to enter password
-#                , global = FALSE) # 4 countries
+                , project = "Subnational vaccine coverage estimates using DHS modeled-surface"
+                , cache_path = "~/DHSData_raw" #Dropbox/OSU/Research_IPR/BrassMethod
+                , config_path = "rdhs.json"
+                #, password_prompt = TRUE #chuyue, unmute this when first running the code to enter password
+                , global = FALSE) # 4 countries
 
 #config <- get_rdhs_config() # check config values to make sure username, project are correct
 read.config("./rdhs.json")
