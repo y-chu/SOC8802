@@ -13,7 +13,7 @@ This folder contains
 -  svdMod.R - R-script used in coding in rmd
 -  Data are publically accessible on DHS website, a window may pop-up requesting password
     password: chuyue
-    this is provided in the rmd file comments line#77
+    this is provided in the rmd file comments line#75
 
 **8802Final_tex.pdf	& 8802Final_tex.tex**
 -  tex and pdf output
